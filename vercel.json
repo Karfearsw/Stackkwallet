@@ -1,0 +1,25 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "apps/web/dist"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/apps/web/dist/$1"
+    },
+    {
+      "src": "/.*",
+      "dest": "/apps/web/dist/index.html"
+    }
+  ],
+  "env": {
+    "VITE_THIRDWEB_CLIENT_ID": "6b0d5db451894828467d39ff2c4934e9"
+  }
+}

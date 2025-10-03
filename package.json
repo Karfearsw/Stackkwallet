@@ -1,0 +1,25 @@
+{
+  "name": "stackk-wallet",
+  "version": "1.0.0",
+  "description": "Stackk Wallet - A modern crypto wallet application",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build:web": "npm run build -w packages/core && npm run build -w apps/web",
+    "vercel-build": "npm run build:web"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@solana/spl-token": "^0.4.14",
+    "buffer": "^6.0.3",
+    "process": "^0.11.10",
+    "util": "^0.12.5"
+  }
+}
