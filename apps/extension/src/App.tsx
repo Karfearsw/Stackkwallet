@@ -1,5 +1,16 @@
 import { useState, useEffect } from 'react'
-import { generateMnemonic, mnemonicToSeedBytes, deriveSolanaKeypair, type KeypairInfo } from '@stackk/core'
+import { 
+  generateMnemonic, 
+  mnemonicToSeedBytes, 
+  deriveSolanaKeypair, 
+  type KeypairInfo,
+  saveWalletToStorage,
+  loadWalletFromStorage,
+  clearWalletFromStorage,
+  isWalletPersistenceEnabled,
+  setWalletPersistenceMode,
+  hasStoredWallet
+} from '@stackk/core'
 import { Connection, PublicKey, LAMPORTS_PER_SOL, SystemProgram, Transaction, sendAndConfirmTransaction, Keypair } from '@solana/web3.js'
 import { 
   getAssociatedTokenAddress, 
@@ -108,10 +119,15 @@ function App() {
   const [mintAmount, setMintAmount] = useState<string>('1000')
   const [keypair, setKeypair] = useState<KeypairInfo | null>(null)
 
+  const [walletPersistenceEnabled, setWalletPersistenceEnabled] = useState<boolean>(() => {
+    return isWalletPersistenceEnabled()
+  })
+  const [showWalletSettings, setShowWalletSettings] = useState<boolean>(false)
+
   const connection = new Connection(NETWORK_ENDPOINTS[network])
 
   useEffect(() => {
-    generateWallet()
+    initializeWallet()
   }, [])
 
   useEffect(() => {
@@ -147,6 +163,26 @@ function App() {
     setTokenBalances([])
   }
 
+  const initializeWallet = async () => {
+    if (walletPersistenceEnabled && hasStoredWallet()) {
+      // Load existing wallet
+      const storedWallet = loadWalletFromStorage()
+      if (storedWallet) {
+        setMnemonic(storedWallet.mnemonic)
+        setAddress(storedWallet.address)
+        
+        // Recreate keypair from stored mnemonic
+        const seed = await mnemonicToSeedBytes(storedWallet.mnemonic)
+        const restoredKeypair = deriveSolanaKeypair(seed)
+        setKeypair(restoredKeypair)
+        return
+      }
+    }
+    
+    // Generate new wallet
+    await generateWallet()
+  }
+
   const generateWallet = async () => {
     const newMnemonic = await generateMnemonic()
     const seed = await mnemonicToSeedBytes(newMnemonic)
@@ -155,6 +191,30 @@ function App() {
     setMnemonic(newMnemonic)
     setAddress(newKeypair.publicKey)
     setKeypair(newKeypair)
+
+    // Save to storage if persistence is enabled
+    if (walletPersistenceEnabled) {
+      saveWalletToStorage(newMnemonic, newKeypair.publicKey)
+    }
+  }
+
+  const toggleWalletPersistence = (enabled: boolean) => {
+    setWalletPersistenceEnabled(enabled)
+    setWalletPersistenceMode(enabled)
+    
+    if (enabled && mnemonic && address) {
+      // Save current wallet when enabling persistence
+      saveWalletToStorage(mnemonic, address)
+    } else if (!enabled) {
+      // Clear stored wallet when disabling persistence
+      clearWalletFromStorage()
+    }
+  }
+
+  const clearStoredWallet = async () => {
+    clearWalletFromStorage()
+    // Generate new wallet
+    await generateWallet()
   }
 
   const fetchBalance = async () => {
@@ -421,33 +481,206 @@ function App() {
         </div>
 
         {/* Network Warning Modal */}
-        {showNetworkWarning && (
-          <div className="modal-overlay">
-            <div className="modal">
-              <h3>⚠️ Switch to Mainnet?</h3>
-              <p>You're about to switch to Solana Mainnet. This will use real SOL and tokens. Make sure you understand the risks.</p>
-              <div className="modal-actions">
-                <button onClick={() => setShowNetworkWarning(false)} className="btn-secondary">
-                  Cancel
-                </button>
-                <button onClick={confirmNetworkSwitch} className="btn-primary">
-                  Continue to Mainnet
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+         {showNetworkWarning && (
+           <div className="modal-overlay">
+             <div className="modal">
+               <h3>⚠️ Switch to Mainnet?</h3>
+               <p>You're about to switch to Solana Mainnet. This will use real SOL and tokens. Make sure you understand the risks.</p>
+               <div className="modal-actions">
+                 <button onClick={() => setShowNetworkWarning(false)} className="btn-secondary">
+                   Cancel
+                 </button>
+                 <button onClick={confirmNetworkSwitch} className="btn-primary">
+                   Continue to Mainnet
+                 </button>
+               </div>
+             </div>
+           </div>
+         )}
+
+         {/* Wallet Settings */}
+         <div className="asset-card">
+           <div className="card-header">
+             <h2 className="card-title">
+               <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                 ⚙️ Wallet Settings
+               </span>
+             </h2>
+             <button
+               onClick={() => setShowWalletSettings(!showWalletSettings)}
+               style={{
+                 background: 'none',
+                 border: 'none',
+                 color: 'var(--spy-accent)',
+                 cursor: 'pointer',
+                 fontSize: '1rem'
+               }}
+             >
+               {showWalletSettings ? '▼' : '▶'}
+             </button>
+           </div>
+           
+           {showWalletSettings && (
+             <div className="asset-info">
+               {/* Wallet Persistence Toggle */}
+               <div style={{
+                 display: 'flex',
+                 alignItems: 'center',
+                 justifyContent: 'space-between',
+                 padding: '1rem',
+                 background: 'var(--spy-bg-secondary)',
+                 borderRadius: '8px',
+                 marginBottom: '1rem'
+               }}>
+                 <div style={{ flex: 1 }}>
+                   <h4 style={{ 
+                     fontWeight: '600', 
+                     color: 'var(--spy-text)', 
+                     marginBottom: '0.25rem' 
+                   }}>
+                     Wallet Persistence
+                   </h4>
+                   <p style={{ 
+                     fontSize: '0.85rem', 
+                     color: 'var(--spy-text-secondary)', 
+                     margin: 0 
+                   }}>
+                     {walletPersistenceEnabled 
+                       ? "Keep the same wallet across browser refreshes" 
+                       : "Generate a new wallet on each refresh"
+                     }
+                   </p>
+                 </div>
+                 <label style={{
+                   position: 'relative',
+                   display: 'inline-flex',
+                   alignItems: 'center',
+                   cursor: 'pointer',
+                   marginLeft: '1rem'
+                 }}>
+                   <input
+                     type="checkbox"
+                     checked={walletPersistenceEnabled}
+                     onChange={(e) => toggleWalletPersistence(e.target.checked)}
+                     style={{ display: 'none' }}
+                   />
+                   <div style={{
+                     width: '44px',
+                     height: '24px',
+                     background: walletPersistenceEnabled ? 'var(--spy-accent)' : 'var(--spy-muted)',
+                     borderRadius: '12px',
+                     position: 'relative',
+                     transition: 'background-color 0.2s'
+                   }}>
+                     <div style={{
+                       position: 'absolute',
+                       top: '2px',
+                       left: walletPersistenceEnabled ? '22px' : '2px',
+                       width: '20px',
+                       height: '20px',
+                       background: 'white',
+                       borderRadius: '50%',
+                       transition: 'left 0.2s'
+                     }} />
+                   </div>
+                 </label>
+               </div>
+
+               {/* Wallet Status Indicator */}
+               <div style={{
+                 padding: '1rem',
+                 background: 'var(--spy-bg-secondary)',
+                 borderRadius: '8px',
+                 marginBottom: '1rem'
+               }}>
+                 <div style={{
+                   display: 'flex',
+                   alignItems: 'center',
+                   justifyContent: 'space-between'
+                 }}>
+                   <div>
+                     <h4 style={{ 
+                       fontWeight: '600', 
+                       color: 'var(--spy-text)', 
+                       marginBottom: '0.25rem' 
+                     }}>
+                       Current Mode
+                     </h4>
+                     <p style={{ 
+                       fontSize: '0.85rem', 
+                       margin: 0,
+                       color: walletPersistenceEnabled ? '#22c55e' : '#f59e0b'
+                     }}>
+                       {walletPersistenceEnabled ? (
+                         <span>🔒 Persistent Wallet</span>
+                       ) : (
+                         <span>🔄 Fresh Wallet Mode</span>
+                       )}
+                     </p>
+                   </div>
+                   {walletPersistenceEnabled && hasStoredWallet() && (
+                     <button
+                       onClick={clearStoredWallet}
+                       style={{
+                         padding: '0.5rem 0.75rem',
+                         background: '#ef4444',
+                         color: 'white',
+                         border: 'none',
+                         borderRadius: '6px',
+                         fontSize: '0.8rem',
+                         fontWeight: '600',
+                         cursor: 'pointer',
+                         transition: 'background-color 0.2s'
+                       }}
+                       onMouseOver={(e) => (e.target as HTMLElement).style.background = '#dc2626'}
+                       onMouseOut={(e) => (e.target as HTMLElement).style.background = '#ef4444'}
+                     >
+                       Clear Wallet
+                     </button>
+                   )}
+                 </div>
+               </div>
+
+               {/* Security Warning */}
+               {walletPersistenceEnabled && (
+                 <div style={{
+                   padding: '1rem',
+                   background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0.05) 100%)',
+                   border: '1px solid rgba(245, 158, 11, 0.2)',
+                   borderRadius: '8px'
+                 }}>
+                   <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+                     <span style={{ color: '#f59e0b', marginRight: '0.5rem' }}>⚠️</span>
+                     <div>
+                       <h4 style={{ 
+                         fontWeight: '600', 
+                         color: '#f59e0b', 
+                         marginBottom: '0.25rem' 
+                       }}>
+                         Security Notice
+                       </h4>
+                       <p style={{ 
+                         fontSize: '0.85rem', 
+                         color: '#fbbf24', 
+                         margin: 0,
+                         lineHeight: '1.4'
+                       }}>
+                         Your wallet is stored locally in your browser. Make sure to backup your mnemonic phrase and only use this feature on trusted devices.
+                       </p>
+                     </div>
+                   </div>
+                 </div>
+               )}
+             </div>
+           )}
+         </div>
 
         {/* Solana Wallet Asset Card */}
         <div className="asset-card">
           <div className="card-header">
             <h2 className="card-title">
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <img 
-                  src="https://cryptologos.cc/logos/solana-sol-logo.png" 
-                  alt="Solana" 
-                  style={{ width: '24px', height: '24px' }}
-                />
+                <span style={{ fontSize: '24px' }}>◎</span>
                 Solana Wallet
               </span>
             </h2>

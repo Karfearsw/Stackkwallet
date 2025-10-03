@@ -12,6 +12,9 @@
       if (typeof global === 'undefined') {
         var global = globalThis;
       }
+      if (typeof Buffer === 'undefined') {
+        window.Buffer = globalThis.Buffer;
+      }
     </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>

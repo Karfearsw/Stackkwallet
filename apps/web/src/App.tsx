@@ -1,8 +1,19 @@
 import { useState, useEffect } from 'react'
 import { ConnectButton } from "thirdweb/react"
 import { createThirdwebClient } from "thirdweb"
-import { generateMnemonic, mnemonicToSeedBytes, deriveSolanaKeypair } from '@stackk/core'
-import { Connection, PublicKey, LAMPORTS_PER_SOL, SystemProgram, Transaction, sendAndConfirmTransaction } from '@solana/web3.js'
+import { 
+  generateMnemonic, 
+  mnemonicToSeedBytes, 
+  deriveSolanaKeypair,
+  type KeypairInfo,
+  saveWalletToStorage,
+  loadWalletFromStorage,
+  clearWalletFromStorage,
+  isWalletPersistenceEnabled,
+  setWalletPersistenceMode,
+  hasStoredWallet
+} from '@stackk/core'
+import { Connection, PublicKey, LAMPORTS_PER_SOL, SystemProgram, Transaction, sendAndConfirmTransaction, Keypair } from '@solana/web3.js'
 import { 
   getAssociatedTokenAddress, 
   createAssociatedTokenAccountInstruction, 
@@ -14,6 +25,8 @@ import {
   mintTo,
   getOrCreateAssociatedTokenAccount
 } from '@solana/spl-token'
+import { InstallExtensionButton } from './components/InstallExtensionButton'
+import GamifiedGuide from './components/GamifiedGuide'
 import './App.css'
 
 const client = createThirdwebClient({
@@ -109,15 +122,206 @@ function App() {
   const [mnemonicCopied, setMnemonicCopied] = useState<boolean>(false)
   const [isCreatingToken, setIsCreatingToken] = useState<boolean>(false)
   const [createdTokenMint, setCreatedTokenMint] = useState<string>('')
-  const [tokenSupply, setTokenSupply] = useState<string>('1000000')
-  const [isMinting, setIsMinting] = useState<boolean>(false)
-  const [mintAmount, setMintAmount] = useState<string>('1000')
+  // Token creation states (currently unused but kept for future features)
+  // const [tokenSupply, setTokenSupply] = useState<string>('1000000')
+  // const [isMinting, setIsMinting] = useState<boolean>(false)
+  // const [mintAmount, setMintAmount] = useState<string>('1000')
+  const [keypair, setKeypair] = useState<KeypairInfo | null>(null)
+  const [initialSupply, setInitialSupply] = useState<string>('1000000')
+  const [decimals, setDecimals] = useState<string>('9')
+  const [transferStatus, setTransferStatus] = useState<string>('')
+  const [createTokenStatus, setCreateTokenStatus] = useState<string>('')
+  const [isBackedUp, setIsBackedUp] = useState<boolean>(false)
+
+  const [walletPersistenceEnabled, setWalletPersistenceEnabled] = useState<boolean>(() => {
+    return isWalletPersistenceEnabled()
+  })
+  const [showWalletSettings, setShowWalletSettings] = useState<boolean>(false)
+  
+  // Gamified guide state
+  const [completedSteps, setCompletedSteps] = useState<string[]>([])
 
   const connection = new Connection(NETWORK_ENDPOINTS[network])
 
+  // Gamification functions
+  const calculateWalletProgress = () => {
+    let progress = 0;
+    
+    // Base progress for having a wallet
+    if (address) progress += 20;
+    
+    // Progress for having SOL balance
+    if (balance > 0) progress += 20;
+    
+    // Progress for having token balances
+    if (tokenBalances.length > 0) progress += 20;
+    
+    // Progress for backing up mnemonic
+    if (isBackedUp) progress += 20;
+    
+    // Progress for making transactions
+    if (transferStatus === 'success') progress += 10;
+    
+    // Progress for creating tokens
+    if (createTokenStatus === 'success') progress += 10;
+    
+    return Math.min(progress, 100);
+  };
+
+  const getProgressEmoji = (progress: number) => {
+    if (progress >= 90) return '🚀';
+    if (progress >= 70) return '⭐';
+    if (progress >= 50) return '🔥';
+    if (progress >= 30) return '💎';
+    if (progress >= 10) return '🌟';
+    return '🎯';
+  };
+
+  const getProgressMessage = (progress: number) => {
+    if (progress >= 90) return 'Crypto Master! 🏆';
+    if (progress >= 70) return 'Almost There! 🎉';
+    if (progress >= 50) return 'Getting Good! 💪';
+    if (progress >= 30) return 'Making Progress! 🌱';
+    if (progress >= 10) return 'Just Started! 🎮';
+    return 'Welcome Aboard! 👋';
+  };
+
+  const getAchievements = () => {
+    const achievements = [];
+    
+    if (address) achievements.push({ emoji: '🎯', title: 'First Steps', desc: 'Created your wallet' });
+    if (balance > 0) achievements.push({ emoji: '💰', title: 'Funded Up', desc: 'Added SOL to wallet' });
+    if (tokenBalances.length > 0) achievements.push({ emoji: '🪙', title: 'Token Collector', desc: 'Holds custom tokens' });
+    if (isBackedUp) achievements.push({ emoji: '🔐', title: 'Security Pro', desc: 'Backed up seed phrase' });
+    if (transferStatus === 'success') achievements.push({ emoji: '📤', title: 'Sender', desc: 'Made first transfer' });
+    if (createTokenStatus === 'success') achievements.push({ emoji: '🏭', title: 'Token Creator', desc: 'Created custom token' });
+    
+    return achievements;
+  };
+
+  // Gamified guide functions
+  const handleStepComplete = (stepId: string) => {
+    if (!completedSteps.includes(stepId)) {
+      setCompletedSteps(prev => [...prev, stepId]);
+    }
+  };
+
+  // Auto-complete steps based on user actions
   useEffect(() => {
-    generateWallet()
+    if (address && !completedSteps.includes('generate-wallet')) {
+      handleStepComplete('generate-wallet');
+    }
+    if (isBackedUp && !completedSteps.includes('backup-seed')) {
+      handleStepComplete('backup-seed');
+    }
+    if (balance > 0 && !completedSteps.includes('check-balance')) {
+      handleStepComplete('check-balance');
+    }
+    if (tokenBalances.length > 0 && !completedSteps.includes('explore-tokens')) {
+      handleStepComplete('explore-tokens');
+    }
+  }, [address, isBackedUp, balance, tokenBalances, completedSteps]);
+
+  const ProgressRing = ({ progress }: { progress: number }) => {
+    const radius = 40;
+    const circumference = 2 * Math.PI * radius;
+    const strokeDasharray = circumference;
+    const strokeDashoffset = circumference - (progress / 100) * circumference;
+
+    return (
+      <div className="progress-ring">
+        <svg className="progress-ring-svg" width="100" height="100">
+          <circle
+            className="progress-ring-circle-bg"
+            stroke="rgba(75, 85, 99, 0.3)"
+            strokeWidth="6"
+            fill="transparent"
+            r={radius}
+            cx="50"
+            cy="50"
+          />
+          <circle
+            className="progress-ring-circle"
+            stroke="url(#progressGradient)"
+            strokeWidth="6"
+            fill="transparent"
+            r={radius}
+            cx="50"
+            cy="50"
+            strokeDasharray={strokeDasharray}
+            strokeDashoffset={strokeDashoffset}
+          />
+          <defs>
+            <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#8B5CF6" />
+              <stop offset="50%" stopColor="#06B6D4" />
+              <stop offset="100%" stopColor="#10B981" />
+            </linearGradient>
+          </defs>
+        </svg>
+        <div className="progress-center">
+          <span className="progress-emoji">{getProgressEmoji(progress)}</span>
+        </div>
+      </div>
+    );
+  };
+
+  useEffect(() => {
+    initializeWallet()
   }, [])
+
+  const initializeWallet = async () => {
+    if (walletPersistenceEnabled && hasStoredWallet()) {
+      try {
+        const stored = loadWalletFromStorage()
+        if (stored) {
+          setMnemonic(stored.mnemonic)
+          setAddress(stored.address)
+          
+          // Derive keypair from stored mnemonic
+          const seed = await mnemonicToSeedBytes(stored.mnemonic)
+          const derivedKeypair = deriveSolanaKeypair(seed)
+          setKeypair(derivedKeypair)
+        }
+      } catch (error) {
+        console.error('Failed to load stored wallet:', error)
+        // If loading fails, generate a new wallet
+        await generateWallet()
+      }
+    } else {
+      await generateWallet()
+    }
+  }
+
+  const toggleWalletPersistence = (enabled: boolean) => {
+    setWalletPersistenceEnabled(enabled)
+    setWalletPersistenceMode(enabled)
+    
+    if (enabled && mnemonic && address) {
+      // Save current wallet when enabling persistence
+      saveWalletToStorage(mnemonic, address)
+    } else if (!enabled) {
+      // Clear stored wallet when disabling persistence
+      clearWalletFromStorage()
+    }
+  }
+
+  const clearStoredWallet = async () => {
+    clearWalletFromStorage()
+    // Generate new wallet
+    await generateWallet()
+  }
+
+  const copyMnemonic = async () => {
+    try {
+      await navigator.clipboard.writeText(mnemonic)
+      setMnemonicCopied(true)
+      setIsBackedUp(true)
+      setTimeout(() => setMnemonicCopied(false), 2000)
+    } catch (error) {
+      console.error('Failed to copy mnemonic:', error)
+    }
+  }
 
   useEffect(() => {
     if (address) {
@@ -155,10 +359,16 @@ function App() {
   const generateWallet = async () => {
     const newMnemonic = await generateMnemonic()
     const seed = await mnemonicToSeedBytes(newMnemonic)
-    const keypair = deriveSolanaKeypair(seed)
+    const newKeypair = deriveSolanaKeypair(seed)
     
     setMnemonic(newMnemonic)
-    setAddress(keypair.publicKey)
+    setAddress(newKeypair.publicKey)
+    setKeypair(newKeypair)
+
+    // Save to storage if persistence is enabled
+    if (walletPersistenceEnabled) {
+      saveWalletToStorage(newMnemonic, newKeypair.publicKey)
+    }
   }
 
   const fetchBalance = async () => {
@@ -217,159 +427,67 @@ function App() {
     }
   }
 
-  const createStackkKoin = async () => {
-    if (isCreatingToken) return
-
-    setIsCreatingToken(true)
-    try {
-      const seed = await mnemonicToSeedBytes(mnemonic)
-      const payer = deriveSolanaKeypair(seed)
-
-      // Create the mint
-      const mint = await createMint(
-        connection,
-        payer as any,
-        payer.publicKey as any, // mint authority
-        payer.publicKey as any, // freeze authority
-        9 // decimals (9 is standard for most tokens)
-      )
-
-      console.log('Stackk Koin (KSW) created with mint address:', mint.toBase58())
-      setCreatedTokenMint(mint.toBase58())
-
-      // Create associated token account and mint initial supply
-      const tokenAccount = await getOrCreateAssociatedTokenAccount(
-        connection,
-        payer as any,
-        mint,
-        payer.publicKey as any
-      )
-
-      // Mint initial supply
-      const initialSupply = parseFloat(tokenSupply) * Math.pow(10, 9) // 9 decimals
-      await mintTo(
-        connection,
-        payer as any,
-        mint,
-        tokenAccount.address,
-        payer.publicKey as any,
-        initialSupply
-      )
-
-      console.log(`Minted ${tokenSupply} KSW tokens to wallet`)
-
-      // Add to token list for current network
-      const newToken: TokenInfo = {
-        mint: mint.toBase58(),
-        symbol: 'KSW',
-        name: 'Stackk Koin',
-        decimals: 9,
-        logoURI: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMTIiIGZpbGw9IiM2MzY2RjEiLz4KPHN2ZyB4PSI2IiB5PSI2IiB3aWR0aD0iMTIiIGhlaWdodD0iMTIiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSI+CjxwYXRoIGQ9Ik0xMiAyTDEzLjA5IDguMjZMMjAgNEwxNS43NCA5SDE5VjE1SDE1Ljc0TDIwIDIwTDEzLjA5IDE1Ljc0TDEyIDIyTDEwLjkxIDE1Ljc0TDQgMjBMOC4yNiAxNUg1VjlIOC4yNkw0IDRMMTAuOTEgOC4yNkwxMiAyWiIgZmlsbD0id2hpdGUiLz4KPC9zdmc+Cjwvc3ZnPgo='
-      }
-
-      // Update the popular tokens list to include our custom token
-      POPULAR_TOKENS[network] = [...POPULAR_TOKENS[network], newToken]
-
-      // Refresh balances to show the new token
-      fetchTokenBalances()
-    } catch (error) {
-      console.error('Token creation failed:', error)
-    } finally {
-      setIsCreatingToken(false)
-    }
-  }
-
-  const mintMoreTokens = async () => {
-    if (!createdTokenMint || isMinting) return
-
-    setIsMinting(true)
-    try {
-      const seed = await mnemonicToSeedBytes(mnemonic)
-      const payer = deriveSolanaKeypair(seed)
-      const mint = new PublicKey(createdTokenMint)
-
-      const tokenAccount = await getOrCreateAssociatedTokenAccount(
-        connection,
-        payer as any,
-        mint,
-        payer.publicKey as any
-      )
-
-      const mintAmountLamports = parseFloat(mintAmount) * Math.pow(10, 9)
-      await mintTo(
-        connection,
-        payer as any,
-        mint,
-        tokenAccount.address,
-        payer.publicKey as any,
-        mintAmountLamports
-      )
-
-      console.log(`Minted ${mintAmount} additional KSW tokens`)
-      fetchTokenBalances()
-    } catch (error) {
-      console.error('Minting failed:', error)
-    } finally {
-      setIsMinting(false)
-    }
-  }
-
-  const handleTransfer = async () => {
-    if (!mnemonic || !recipientAddress || !amount) return
+  const transferAsset = async () => {
+    if (!address || !recipientAddress || !amount) return
 
     setIsTransferring(true)
     try {
-      const seed = await mnemonicToSeedBytes(mnemonic)
-      const keypairInfo = deriveSolanaKeypair(seed)
-      
-      // Create Keypair from secretKey for transaction signing
-      const senderKeypair = {
-        publicKey: new PublicKey(keypairInfo.publicKey),
-        secretKey: keypairInfo.secretKey
+      if (!keypair) {
+        throw new Error('Keypair not available')
       }
-      
-      const recipientPublicKey = new PublicKey(recipientAddress)
+
+      const fromPublicKey = new PublicKey(address)
+      const toPublicKey = new PublicKey(recipientAddress)
+      const solanaKeypair = Keypair.fromSecretKey(keypair.secretKey)
 
       if (selectedToken === 'SOL') {
-        // Native SOL transfer
-        const amountInLamports = parseFloat(amount) * LAMPORTS_PER_SOL
-
+        // Transfer SOL
         const transaction = new Transaction().add(
           SystemProgram.transfer({
-            fromPubkey: senderKeypair.publicKey,
-            toPubkey: recipientPublicKey,
-            lamports: amountInLamports,
+            fromPubkey: fromPublicKey,
+            toPubkey: toPublicKey,
+            lamports: parseFloat(amount) * LAMPORTS_PER_SOL,
           })
         )
 
         const signature = await sendAndConfirmTransaction(
           connection,
           transaction,
-          [senderKeypair as any]
+          [solanaKeypair]
         )
 
-        console.log('SOL Transfer successful:', signature)
+        console.log('SOL transfer successful:', signature)
+        setTransferStatus('success')
       } else {
-        // SPL Token transfer
-        const selectedTokenInfo = [...POPULAR_TOKENS[network]].find(token => token.symbol === selectedToken)
-        if (!selectedTokenInfo) throw new Error('Token not found')
+        // Transfer SPL Token
+        const selectedTokenInfo = tokenBalances.find(t => t.symbol === selectedToken)
+        if (!selectedTokenInfo) {
+          throw new Error('Selected token not found')
+        }
 
         const mintPublicKey = new PublicKey(selectedTokenInfo.mint)
-        const senderTokenAddress = await getAssociatedTokenAddress(mintPublicKey, senderKeypair.publicKey)
-        const recipientTokenAddress = await getAssociatedTokenAddress(mintPublicKey, recipientPublicKey)
+        const fromTokenAccount = await getAssociatedTokenAddress(
+          mintPublicKey,
+          fromPublicKey
+        )
+        const toTokenAccount = await getAssociatedTokenAddress(
+          mintPublicKey,
+          toPublicKey
+        )
 
         const transaction = new Transaction()
 
-        // Check if recipient token account exists, create if not
+        // Check if recipient token account exists
         try {
-          await getAccount(connection, recipientTokenAddress)
+          await getAccount(connection, toTokenAccount)
         } catch (error) {
           if (error instanceof TokenAccountNotFoundError) {
+            // Create associated token account for recipient
             transaction.add(
               createAssociatedTokenAccountInstruction(
-                senderKeypair.publicKey, // payer
-                recipientTokenAddress,
-                recipientPublicKey, // owner
+                fromPublicKey, // payer
+                toTokenAccount, // associated token account
+                toPublicKey, // owner
                 mintPublicKey // mint
               )
             )
@@ -377,571 +495,161 @@ function App() {
         }
 
         // Add transfer instruction
-        const transferAmount = parseFloat(amount) * Math.pow(10, selectedTokenInfo.decimals)
         transaction.add(
           createTransferInstruction(
-            senderTokenAddress,
-            recipientTokenAddress,
-            senderKeypair.publicKey,
-            transferAmount
+            fromTokenAccount,
+            toTokenAccount,
+            fromPublicKey,
+            parseFloat(amount) * Math.pow(10, selectedTokenInfo.decimals)
           )
         )
 
         const signature = await sendAndConfirmTransaction(
           connection,
           transaction,
-          [senderKeypair as any]
+          [solanaKeypair]
         )
 
-        console.log('Token Transfer successful:', signature)
+        console.log('Token transfer successful:', signature)
+        setTransferStatus('success')
       }
 
+      // Reset form
       setRecipientAddress('')
       setAmount('')
+      
+      // Refresh balances
       fetchBalance()
       fetchTokenBalances()
     } catch (error) {
       console.error('Transfer failed:', error)
+      alert('Transfer failed: ' + (error as Error).message)
     } finally {
       setIsTransferring(false)
     }
   }
 
+  const createToken = async () => {
+    if (!address || !initialSupply) return
+
+    setIsCreatingToken(true)
+    try {
+      if (!keypair) {
+        throw new Error('Keypair not available')
+      }
+
+      const solanaKeypair = Keypair.fromSecretKey(keypair.secretKey)
+      // const mintKeypair = Keypair.generate()
+
+      const mint = await createMint(
+        connection,
+        solanaKeypair, // payer
+        solanaKeypair.publicKey, // mint authority
+        solanaKeypair.publicKey, // freeze authority
+        parseInt(decimals) // decimals
+      )
+
+      const tokenAccount = await getOrCreateAssociatedTokenAccount(
+        connection,
+        solanaKeypair, // payer
+        mint, // mint
+        solanaKeypair.publicKey // owner
+      )
+
+      await mintTo(
+        connection,
+        solanaKeypair, // payer
+        mint, // mint
+        tokenAccount.address, // destination
+        solanaKeypair.publicKey, // authority
+        parseFloat(initialSupply) * Math.pow(10, parseInt(decimals)) // amount
+      )
+
+      setCreatedTokenMint(mint.toString())
+      setCreateTokenStatus('success')
+      console.log('Token created successfully:', mint.toString())
+      
+      // Refresh token balances to show the new token
+      fetchTokenBalances()
+    } catch (error) {
+      console.error('Token creation failed:', error)
+      alert('Token creation failed: ' + (error as Error).message)
+    } finally {
+      setIsCreatingToken(false)
+    }
+  }
+
+  const walletProgress = calculateWalletProgress();
+  const achievements = getAchievements();
+
   return (
-    <div className="app-container">
-      <div className="header">
-        <h1>Stackk Wallet</h1>
-        <p className="subtitle">Global Asset Tracking &amp; Management System</p>
+    <div className="modern-app-container">
+      {/* Floating Background Elements */}
+      <div className="floating-orbs">
+        <div className="orb orb-1"></div>
+        <div className="orb orb-2"></div>
+        <div className="orb orb-3"></div>
       </div>
 
-      <div className="dashboard-grid">
-        {/* Solana Wallet Asset Card */}
-        <div className="asset-card">
-          <div className="card-header">
-            <h2 className="card-title">
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="12" cy="12" r="12" fill="url(#solanaGradient)"/>
-                  <path d="M5.5 17.5L18.5 4.5M5.5 6.5L18.5 19.5M5.5 12L18.5 12" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-                  <defs>
-                    <linearGradient id="solanaGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#9945FF"/>
-                      <stop offset="100%" stopColor="#14F195"/>
-                    </linearGradient>
-                  </defs>
-                </svg>
-                Solana Wallet
-              </span>
-            </h2>
-            <div className="status-indicator"></div>
+      {/* Header with Install Extension Button */}
+      <div className="modern-header">
+        <InstallExtensionButton />
+        <div className="header-content">
+          <div className="logo-container">
+            <div className="logo-icon">💎</div>
+            <h1 className="modern-title">
+              <span className="title-gradient">Stackk</span>
+              <span className="title-accent">Wallet</span>
+            </h1>
           </div>
+          <p className="modern-subtitle">
+            Your Gateway to the Solana Ecosystem ✨
+          </p>
           
-          <div className="asset-info">
-            <div className="info-row">
-              <span className="info-label">Address</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span className="info-value">{address ? `${address.slice(0, 8)}...${address.slice(-8)}` : 'Generating...'}</span>
-                {address && (
-                  <button 
-                    onClick={() => navigator.clipboard.writeText(address)}
-                    style={{ 
-                      padding: '0.25rem 0.5rem', 
-                      fontSize: '0.8rem', 
-                      background: 'var(--spy-accent)', 
-                      color: 'white', 
-                      border: 'none', 
-                      borderRadius: '4px', 
-                      cursor: 'pointer' 
-                    }}
-                  >
-                    Copy Full Address
-                  </button>
-                )}
-              </div>
-            </div>
-            
-            <div className="info-row">
-              <span className="info-label">SOL Balance</span>
-              <span className="info-value balance-value">{balance.toFixed(4)} SOL</span>
-            </div>
-            
-            {/* Token Balances */}
-            {tokenBalances.length > 0 && (
-              <div className="token-balances">
-                <h3 style={{ margin: '1rem 0 0.5rem 0', color: 'var(--spy-text-primary)', fontSize: '1rem' }}>SPL Tokens</h3>
-                {tokenBalances.map((token) => (
-                  <div key={token.mint} className="info-row">
-                    <span className="info-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      {token.logoURI && (
-                        <img 
-                          src={token.logoURI} 
-                          alt={token.symbol} 
-                          style={{ width: '20px', height: '20px', borderRadius: '50%' }}
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                        />
-                      )}
-                      {token.symbol}
-                    </span>
-                    <span className="info-value balance-value">
-                      {token.balance.toFixed(token.decimals === 9 ? 4 : 2)} {token.symbol}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-            
-            <div className="info-row">
-              <span className="info-label">Network</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span className="info-value">{network === 'devnet' ? 'Devnet' : 'Mainnet'}</span>
-                <select 
-                  value={network} 
-                  onChange={(e) => handleNetworkChange(e.target.value as SolanaNetwork)}
-                  style={{ 
-                    padding: '0.25rem 0.5rem', 
-                    fontSize: '0.8rem', 
-                    background: 'var(--spy-surface)', 
-                    color: 'var(--spy-text)', 
-                    border: '1px solid var(--spy-border)', 
-                    borderRadius: '4px', 
-                    cursor: 'pointer' 
-                  }}
-                >
-                  <option value="devnet">Devnet</option>
-                  <option value="mainnet-beta">Mainnet</option>
-                </select>
-              </div>
-            </div>
-            
-            <div className="info-row">
-              <span className="info-label">Status</span>
-              <span className="info-value">Active</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Mnemonic Backup Section */}
-        <div className="asset-card">
-          <div className="card-header">
-            <h2 className="card-title">
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                🔐 Backup Mnemonic Phrase
-              </span>
-            </h2>
-            <div className="status-indicator"></div>
-          </div>
-          
-          <div className="asset-info">
-            <div style={{
-              background: 'linear-gradient(135deg, rgba(255, 107, 107, 0.1) 0%, rgba(255, 107, 107, 0.05) 100%)',
-              border: '1px solid rgba(255, 107, 107, 0.2)',
-              borderRadius: '8px',
-              padding: '1rem',
-              marginBottom: '1rem'
-            }}>
-              <h4 style={{ 
-                fontSize: '1rem', 
-                fontWeight: '600', 
-                color: '#ff6b6b', 
-                marginBottom: '0.5rem',
-                display: 'flex',
-                alignItems: 'center'
-              }}>
-                ⚠️ Security Warning
-              </h4>
-              <p style={{ 
-                margin: 0, 
-                color: 'var(--spy-text-secondary)',
-                fontSize: '0.9rem',
-                lineHeight: '1.4'
-              }}>
-                Your mnemonic phrase is the master key to your wallet. Never share it with anyone and store it securely offline.
-              </p>
-            </div>
-
-            <div style={{ marginBottom: '1rem' }}>
+          {/* Network Selector with Modern Design */}
+          <div className="network-selector-modern">
+            <div className="network-label">Network:</div>
+            <div className="network-buttons">
               <button
-                onClick={() => setShowMnemonic(!showMnemonic)}
-                style={{
-                  width: '100%',
-                  padding: '0.75rem 1rem',
-                  background: showMnemonic ? 'var(--spy-muted)' : 'var(--spy-accent)',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '1rem',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  transition: 'background-color 0.2s',
-                  marginBottom: '1rem'
-                }}
+                onClick={() => handleNetworkChange('devnet')}
+                className={`network-btn ${network === 'devnet' ? 'active' : ''}`}
               >
-                {showMnemonic ? '🙈 Hide Mnemonic' : '👁️ Show Mnemonic'}
+                <span className="network-dot devnet"></span>
+                Devnet
               </button>
-
-              {showMnemonic && (
-                <div style={{
-                  background: 'var(--spy-surface)',
-                  border: '2px solid var(--spy-border)',
-                  borderRadius: '8px',
-                  padding: '1rem',
-                  marginBottom: '1rem'
-                }}>
-                  <div style={{
-                    background: 'var(--spy-bg-secondary)',
-                    padding: '1rem',
-                    borderRadius: '6px',
-                    fontFamily: 'monospace',
-                    fontSize: '0.9rem',
-                    lineHeight: '1.6',
-                    color: 'var(--spy-text)',
-                    wordBreak: 'break-all',
-                    marginBottom: '1rem'
-                  }}>
-                    {mnemonic}
-                  </div>
-                  
-                  <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(mnemonic)
-                        setMnemonicCopied(true)
-                        setTimeout(() => setMnemonicCopied(false), 2000)
-                      }}
-                      style={{
-                        flex: 1,
-                        padding: '0.5rem 1rem',
-                        background: mnemonicCopied ? '#22c55e' : 'var(--spy-accent)',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '6px',
-                        fontSize: '0.9rem',
-                        fontWeight: '600',
-                        cursor: 'pointer',
-                        transition: 'background-color 0.2s'
-                      }}
-                    >
-                      {mnemonicCopied ? '✅ Copied!' : '📋 Copy to Clipboard'}
-                    </button>
-                  </div>
-
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    padding: '0.75rem',
-                    background: 'var(--spy-bg-secondary)',
-                    borderRadius: '6px'
-                  }}>
-                    <input
-                      type="checkbox"
-                      id="backup-confirmation"
-                      checked={mnemonicBackedUp}
-                      onChange={(e) => setMnemonicBackedUp(e.target.checked)}
-                      style={{ cursor: 'pointer' }}
-                    />
-                    <label 
-                      htmlFor="backup-confirmation" 
-                      style={{ 
-                        fontSize: '0.9rem', 
-                        color: 'var(--spy-text)', 
-                        cursor: 'pointer',
-                        lineHeight: '1.4'
-                      }}
-                    >
-                      I have safely backed up my mnemonic phrase and understand that losing it means losing access to my wallet forever.
-                    </label>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div style={{
-              background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(34, 197, 94, 0.05) 100%)',
-              border: '1px solid rgba(34, 197, 94, 0.2)',
-              borderRadius: '8px',
-              padding: '1rem'
-            }}>
-              <h4 style={{ 
-                fontSize: '0.9rem', 
-                fontWeight: '600', 
-                color: '#22c55e', 
-                marginBottom: '0.5rem'
-              }}>
-                💡 Backup Tips
-              </h4>
-              <ul style={{ 
-                margin: 0, 
-                paddingLeft: '1.2rem', 
-                color: 'var(--spy-text-secondary)',
-                fontSize: '0.85rem',
-                lineHeight: '1.4'
-              }}>
-                <li>Write it down on paper and store in a safe place</li>
-                <li>Consider using a hardware wallet for maximum security</li>
-                <li>Never store it digitally or take screenshots</li>
-                <li>Test your backup by restoring in a test environment</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        {/* Thirdweb Connection Card */}
-        <div className="connect-section">
-          <div className="card-header">
-            <h2 className="card-title">External Wallet Connection</h2>
-            <div className="status-indicator"></div>
-          </div>
-          
-          {!import.meta.env.VITE_THIRDWEB_CLIENT_ID && (
-            <div className="warning-banner">
-              <div className="warning-banner-content">
-                <strong>Configuration Required:</strong> Please set your Thirdweb Client ID in the environment variables to enable wallet connections.
-              </div>
-            </div>
-          )}
-          
-          <ConnectButton client={client} />
-          
-          <p style={{ marginTop: '1rem', color: 'var(--spy-text-secondary)', fontSize: '0.9rem' }}>
-            Connect external wallets for multi-chain asset management
-          </p>
-        </div>
-
-        {/* Token Creation Card */}
-        <div className="transfer-section">
-          <div className="card-header">
-            <h2 className="card-title">Create Stackk Koin (KSW)</h2>
-            <div className="status-indicator"></div>
-          </div>
-          
-          <div className="transfer-form">
-            {!createdTokenMint ? (
-              <>
-                <div className="form-group">
-                  <label htmlFor="tokenSupply">Initial Supply</label>
-                  <input
-                    id="tokenSupply"
-                    type="number"
-                    value={tokenSupply}
-                    onChange={(e) => setTokenSupply(e.target.value)}
-                    placeholder="1000000"
-                    style={{
-                      width: '100%',
-                      padding: '0.75rem',
-                      border: '1px solid var(--spy-border)',
-                      borderRadius: '8px',
-                      background: 'var(--spy-surface)',
-                      color: 'var(--spy-text)',
-                      fontSize: '1rem'
-                    }}
-                  />
-                </div>
-                
-                <button
-                  onClick={createStackkKoin}
-                  disabled={isCreatingToken || !tokenSupply}
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem 1rem',
-                    background: isCreatingToken ? 'var(--spy-muted)' : 'var(--spy-accent)',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '8px',
-                    fontSize: '1rem',
-                    fontWeight: '600',
-                    cursor: isCreatingToken ? 'not-allowed' : 'pointer',
-                    transition: 'background-color 0.2s'
-                  }}
-                >
-                  {isCreatingToken ? 'Creating Token...' : 'Create Stackk Koin (KSW)'}
-                </button>
-              </>
-            ) : (
-              <>
-                <div style={{ 
-                  padding: '1rem', 
-                  background: 'var(--spy-success-bg)', 
-                  border: '1px solid var(--spy-success)', 
-                  borderRadius: '8px', 
-                  marginBottom: '1rem' 
-                }}>
-                  <p style={{ color: 'var(--spy-success)', margin: 0, fontWeight: '600' }}>
-                    ✅ Stackk Koin (KSW) Created Successfully!
-                  </p>
-                  <p style={{ color: 'var(--spy-text-secondary)', margin: '0.5rem 0 0 0', fontSize: '0.9rem' }}>
-                    Mint: {createdTokenMint.slice(0, 8)}...{createdTokenMint.slice(-8)}
-                  </p>
-                </div>
-                
-                <div className="form-group">
-                  <label htmlFor="mintAmount">Mint Additional Tokens</label>
-                  <input
-                    id="mintAmount"
-                    type="number"
-                    value={mintAmount}
-                    onChange={(e) => setMintAmount(e.target.value)}
-                    placeholder="1000"
-                    style={{
-                      width: '100%',
-                      padding: '0.75rem',
-                      border: '1px solid var(--spy-border)',
-                      borderRadius: '8px',
-                      background: 'var(--spy-surface)',
-                      color: 'var(--spy-text)',
-                      fontSize: '1rem'
-                    }}
-                  />
-                </div>
-                
-                <button
-                  onClick={mintMoreTokens}
-                  disabled={isMinting || !mintAmount}
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem 1rem',
-                    background: isMinting ? 'var(--spy-muted)' : 'var(--spy-accent)',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '8px',
-                    fontSize: '1rem',
-                    fontWeight: '600',
-                    cursor: isMinting ? 'not-allowed' : 'pointer',
-                    transition: 'background-color 0.2s'
-                  }}
-                >
-                  {isMinting ? 'Minting...' : 'Mint Additional KSW'}
-                </button>
-              </>
-            )}
-          </div>
-          
-          <p style={{ marginTop: '1rem', color: 'var(--spy-text-secondary)', fontSize: '0.9rem' }}>
-            Create your own SPL token on Solana. The token will be automatically added to your wallet.
-          </p>
-        </div>
-
-        {/* Native Transfer Card */}
-        <div className="transfer-section">
-          <div className="card-header">
-            <h2 className="card-title">Asset Transfer</h2>
-            <div className="status-indicator"></div>
-          </div>
-          
-          <div className="transfer-form">
-            <div className="form-row">
-              <select
-                value={selectedToken}
-                onChange={(e) => setSelectedToken(e.target.value)}
-                style={{
-                  padding: '0.75rem',
-                  borderRadius: '8px',
-                  border: '1px solid var(--spy-border)',
-                  background: 'var(--spy-bg-secondary)',
-                  color: 'var(--spy-text-primary)',
-                  fontSize: '1rem',
-                  marginBottom: '0.5rem'
-                }}
+              <button
+                onClick={() => handleNetworkChange('mainnet-beta')}
+                className={`network-btn ${network === 'mainnet-beta' ? 'active' : ''}`}
               >
-                <option value="SOL">SOL (Native)</option>
-                {POPULAR_TOKENS[network].map((token) => (
-                  <option key={token.mint} value={token.symbol}>
-                    {token.symbol} - {token.name}
-                  </option>
-                ))}
-              </select>
+                <span className="network-dot mainnet"></span>
+                Mainnet
+              </button>
             </div>
-            
-            <div className="form-row">
-              <input
-                type="text"
-                placeholder="Recipient Address"
-                value={recipientAddress}
-                onChange={(e) => setRecipientAddress(e.target.value)}
-              />
-              <input
-                type="number"
-                placeholder={`Amount (${selectedToken})`}
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                step="0.001"
-                min="0"
-              />
-            </div>
-            
-            <button
-              className="send-button"
-              onClick={handleTransfer}
-              disabled={!recipientAddress || !amount || isTransferring || (selectedToken === 'SOL' ? balance === 0 : !tokenBalances.find(t => t.symbol === selectedToken))}
-            >
-              {isTransferring ? (
-                <>
-                  <span className="loading"></span>
-                  Processing Transfer...
-                </>
-              ) : (
-                `Send ${selectedToken}`
-              )}
-            </button>
           </div>
-          
-          <p style={{ marginTop: '1rem', color: 'var(--spy-text-secondary)', fontSize: '0.9rem' }}>
-            Secure SOL and SPL token transfers on Solana {network === 'devnet' ? 'Devnet' : 'Mainnet'}
-          </p>
         </div>
       </div>
 
       {/* Network Warning Modal */}
       {showNetworkWarning && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.8)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div style={{
-            background: 'var(--spy-surface)',
-            padding: '2rem',
-            borderRadius: '8px',
-            border: '1px solid var(--spy-border)',
-            maxWidth: '400px',
-            textAlign: 'center'
-          }}>
-            <h3 style={{ color: '#ff6b6b', marginBottom: '1rem' }}>⚠️ Mainnet Warning</h3>
-            <p style={{ marginBottom: '1.5rem', color: 'var(--spy-text)' }}>
-              You are about to switch to Solana Mainnet. This network uses real SOL tokens with actual value. 
-              Make sure you understand the risks before proceeding.
-            </p>
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-              <button
+        <div className="modal-overlay">
+          <div className="modal-content warning-modal">
+            <div className="modal-header">
+              <h3>⚠️ Switch to Mainnet?</h3>
+            </div>
+            <div className="modal-body">
+              <p>You're switching from Devnet to Mainnet. This will use real SOL tokens.</p>
+              <p><strong>Make sure you understand the risks!</strong></p>
+            </div>
+            <div className="modal-actions">
+              <button 
                 onClick={() => setShowNetworkWarning(false)}
-                style={{
-                  padding: '0.5rem 1rem',
-                  background: 'var(--spy-border)',
-                  color: 'var(--spy-text)',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
-                }}
+                className="btn-secondary"
               >
                 Cancel
               </button>
-              <button
+              <button 
                 onClick={confirmNetworkSwitch}
-                style={{
-                  padding: '0.5rem 1rem',
-                  background: '#ff6b6b',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
-                }}
+                className="btn-danger"
               >
                 Switch to Mainnet
               </button>
@@ -950,439 +658,483 @@ function App() {
         </div>
       )}
 
-      {/* How It Works Guide Section */}
-      <div className="guide-section" style={{
-        marginTop: '4rem',
-        padding: '3rem 2rem',
-        background: 'linear-gradient(135deg, var(--spy-surface) 0%, var(--spy-bg-secondary) 100%)',
-        borderRadius: '16px',
-        border: '1px solid var(--spy-border)',
-        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)'
-      }}>
-        <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
-          <h2 style={{ 
-            fontSize: '2.5rem', 
-            fontWeight: '700', 
-            background: 'linear-gradient(135deg, var(--spy-accent) 0%, #9333ea 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            marginBottom: '1rem'
-          }}>
-            How Stackk Wallet Works
-          </h2>
-          <p style={{ 
-            fontSize: '1.2rem', 
-            color: 'var(--spy-text-secondary)', 
-            maxWidth: '600px', 
-            margin: '0 auto' 
-          }}>
-            Your complete guide to multi-chain wallet management and custom token creation
-          </p>
+      {/* Main Content Container */}
+      <div className="main-content-container">
+        
+        {/* Gamified Guide */}
+        <GamifiedGuide 
+          onStepComplete={handleStepComplete}
+          completedSteps={completedSteps}
+        />
+        
+        {/* Third-Party Wallet Connection */}
+          <div className="modern-card third-party-wallet">
+            <div className="card-header-modern">
+              <div className="card-title-container">
+                <div className="card-icon">🔗</div>
+                <h2 className="card-title-modern">Connect External Wallet</h2>
+              </div>
+            </div>
+            <div className="wallet-connection-options">
+              <div className="connection-description">
+                Connect your existing wallet to interact with Solana dApps
+              </div>
+              <div className="connect-button-container">
+                <ConnectButton 
+                  client={client}
+                  theme="dark"
+                  connectButton={{
+                    label: "Connect Wallet",
+                    style: {
+                      background: "linear-gradient(135deg, #8B5CF6, #06B6D4)",
+                      border: "none",
+                      borderRadius: "12px",
+                      padding: "12px 24px",
+                      fontSize: "16px",
+                      fontWeight: "600",
+                      color: "white",
+                      cursor: "pointer",
+                      transition: "all 0.3s ease",
+                    }
+                  }}
+                  connectModal={{
+                    title: "Connect Your Wallet",
+                    titleIcon: "🔗",
+                    showThirdwebBranding: false,
+                  }}
+                />
+              </div>
+              <div className="supported-wallets">
+                <div className="supported-title">Supported Wallets:</div>
+                <div className="wallet-icons">
+                  <div className="wallet-icon" title="MetaMask">🦊</div>
+                  <div className="wallet-icon" title="WalletConnect">🔗</div>
+                  <div className="wallet-icon" title="Coinbase Wallet">🔵</div>
+                  <div className="wallet-icon" title="Trust Wallet">🛡️</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Wallet Overview Card */}
+        <div className="modern-card wallet-overview">
+          <div className="card-header-modern">
+            <div className="card-title-container">
+              <div className="card-icon">🏦</div>
+              <h2 className="card-title-modern">Wallet Overview</h2>
+            </div>
+            <div className="wallet-settings-toggle">
+              <button 
+                onClick={() => setShowWalletSettings(!showWalletSettings)}
+                className="settings-btn"
+                title="Wallet Settings"
+              >
+                ⚙️
+              </button>
+            </div>
+          </div>
+
+          {/* Wallet Settings Panel */}
+          {showWalletSettings && (
+            <div className="wallet-settings-panel">
+              <div className="setting-item">
+                <div className="setting-info">
+                  <h4>💾 Wallet Persistence</h4>
+                  <p>Keep the same wallet address across browser refreshes</p>
+                </div>
+                <label className="modern-toggle">
+                  <input
+                    type="checkbox"
+                    checked={walletPersistenceEnabled}
+                    onChange={(e) => toggleWalletPersistence(e.target.checked)}
+                  />
+                  <span className="toggle-slider"></span>
+                </label>
+              </div>
+              
+              {walletPersistenceEnabled && hasStoredWallet() && (
+                <div className="setting-item">
+                  <div className="setting-info">
+                    <h4>🗑️ Clear Stored Wallet</h4>
+                    <p>Remove saved wallet and generate a new one</p>
+                  </div>
+                  <button 
+                    onClick={clearStoredWallet}
+                    className="btn-danger-small"
+                  >
+                    Clear Wallet
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Balance Display */}
+          <div className="balance-display">
+            <div className="balance-main">
+              <div className="balance-label">💰 Total Balance</div>
+              <div className="balance-value-container">
+                <span className="balance-value">{balance.toFixed(4)}</span>
+                <span className="balance-currency">SOL</span>
+              </div>
+              <div className="progress-message">
+                {getProgressMessage(walletProgress)}
+              </div>
+            </div>
+            <ProgressRing progress={walletProgress} />
+          </div>
+
+          {/* Wallet Address */}
+          <div className="wallet-address-container">
+            <div className="address-label">Wallet Address</div>
+            <div className="address-display">
+              <span className="address-text">{address}</span>
+              <button 
+                onClick={() => navigator.clipboard.writeText(address)}
+                className="copy-btn"
+                title="Copy Address"
+              >
+                📋
+              </button>
+            </div>
+          </div>
+
+          {/* Achievements Section */}
+          {achievements.length > 0 && (
+            <div className="achievements-section">
+              <h4 className="achievements-title">🏆 Your Achievements</h4>
+              <div className="achievements-grid">
+                {achievements.map((achievement, index) => (
+                  <div key={index} className="achievement-item">
+                    <span className="achievement-emoji">{achievement.emoji}</span>
+                    <div className="achievement-content">
+                      <div className="achievement-title">{achievement.title}</div>
+                      <div className="achievement-desc">{achievement.desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Token Balances */}
+          {tokenBalances.length > 0 && (
+            <div className="token-balances">
+              <h3 className="token-balances-title">Token Holdings 🪙</h3>
+              <div className="token-list">
+                {tokenBalances.map((token) => (
+                  <div key={token.mint} className="token-item">
+                    <div className="token-info">
+                      <div className="token-symbol">{token.symbol}</div>
+                      <div className="token-name">{token.name}</div>
+                    </div>
+                    <div className="token-balance">
+                      {token.balance.toFixed(6)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Mnemonic Backup Section */}
+          <div className="mnemonic-section">
+            <div className="mnemonic-header">
+              <h3>🔐 Backup Your Wallet</h3>
+              <button 
+                onClick={() => setShowMnemonic(!showMnemonic)}
+                className="btn-secondary-small"
+              >
+                {showMnemonic ? 'Hide' : 'Show'} Seed Phrase
+              </button>
+            </div>
+            
+            {showMnemonic && (
+              <div className="mnemonic-display">
+                <div className="mnemonic-warning">
+                  <div className="warning-icon">⚠️</div>
+                  <div className="warning-text">
+                    <strong>Keep this safe!</strong> Anyone with this phrase can access your wallet.
+                  </div>
+                </div>
+                
+                <div className="mnemonic-words">
+                  {mnemonic.split(' ').map((word, index) => (
+                    <span key={index} className="mnemonic-word">
+                      <span className="word-number">{index + 1}</span>
+                      {word}
+                    </span>
+                  ))}
+                </div>
+                
+                <div className="mnemonic-actions">
+                  <button 
+                    onClick={copyMnemonic}
+                    className={`btn-copy ${mnemonicCopied ? 'copied' : ''}`}
+                  >
+                    {mnemonicCopied ? '✅ Copied!' : '📋 Copy Phrase'}
+                  </button>
+                  
+                  <label className="backup-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={mnemonicBackedUp}
+                      onChange={(e) => {
+                        setMnemonicBackedUp(e.target.checked)
+                        setIsBackedUp(e.target.checked)
+                      }}
+                    />
+                    <span className="checkmark"></span>
+                    I've safely backed up my seed phrase
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Step-by-Step Guide */}
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', 
-          gap: '2rem', 
-          marginBottom: '3rem' 
-        }}>
-          {/* Step 1 */}
-          <div style={{
-            background: 'var(--spy-surface)',
-            padding: '2rem',
-            borderRadius: '12px',
-            border: '1px solid var(--spy-border)',
-            textAlign: 'center',
-            transition: 'transform 0.3s ease, box-shadow 0.3s ease'
-          }} className="guide-step">
-            <div style={{
-              width: '60px',
-              height: '60px',
-              background: 'linear-gradient(135deg, var(--spy-accent) 0%, #9333ea 100%)',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 1.5rem',
-              fontSize: '1.5rem',
-              fontWeight: '700',
-              color: 'white'
-            }}>
-              1
-            </div>
-            <h3 style={{ fontSize: '1.3rem', fontWeight: '600', marginBottom: '1rem', color: 'var(--spy-text)' }}>
-              🔐 Wallet Creation
-            </h3>
-            <p style={{ color: 'var(--spy-text-secondary)', lineHeight: '1.6' }}>
-              Your wallet is automatically generated with a secure mnemonic phrase. Keep your private keys safe and never share them.
-            </p>
-          </div>
-
-          {/* Step 2 */}
-          <div style={{
-            background: 'var(--spy-surface)',
-            padding: '2rem',
-            borderRadius: '12px',
-            border: '1px solid var(--spy-border)',
-            textAlign: 'center',
-            transition: 'transform 0.3s ease, box-shadow 0.3s ease'
-          }} className="guide-step">
-            <div style={{
-              width: '60px',
-              height: '60px',
-              background: 'linear-gradient(135deg, var(--spy-accent) 0%, #9333ea 100%)',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 1.5rem',
-              fontSize: '1.5rem',
-              fontWeight: '700',
-              color: 'white'
-            }}>
-              2
-            </div>
-            <h3 style={{ fontSize: '1.3rem', fontWeight: '600', marginBottom: '1rem', color: 'var(--spy-text)' }}>
-              💰 Add Funds
-            </h3>
-            <p style={{ color: 'var(--spy-text-secondary)', lineHeight: '1.6' }}>
-              Copy your wallet address and send SOL or SPL tokens from another wallet or exchange. Start with Devnet for testing.
-            </p>
-          </div>
-
-          {/* Step 3 */}
-          <div style={{
-            background: 'var(--spy-surface)',
-            padding: '2rem',
-            borderRadius: '12px',
-            border: '1px solid var(--spy-border)',
-            textAlign: 'center',
-            transition: 'transform 0.3s ease, box-shadow 0.3s ease'
-          }} className="guide-step">
-            <div style={{
-              width: '60px',
-              height: '60px',
-              background: 'linear-gradient(135deg, var(--spy-accent) 0%, #9333ea 100%)',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 1.5rem',
-              fontSize: '1.5rem',
-              fontWeight: '700',
-              color: 'white'
-            }}>
-              3
-            </div>
-            <h3 style={{ fontSize: '1.3rem', fontWeight: '600', marginBottom: '1rem', color: 'var(--spy-text)' }}>
-              🚀 Send & Receive
-            </h3>
-            <p style={{ color: 'var(--spy-text-secondary)', lineHeight: '1.6' }}>
-              Transfer SOL and SPL tokens securely. Select your token, enter recipient address, and confirm the transaction.
-            </p>
-          </div>
-
-          {/* Step 4 */}
-          <div style={{
-            background: 'var(--spy-surface)',
-            padding: '2rem',
-            borderRadius: '12px',
-            border: '1px solid var(--spy-border)',
-            textAlign: 'center',
-            transition: 'transform 0.3s ease, box-shadow 0.3s ease'
-          }} className="guide-step">
-            <div style={{
-              width: '60px',
-              height: '60px',
-              background: 'linear-gradient(135deg, var(--spy-accent) 0%, #9333ea 100%)',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 1.5rem',
-              fontSize: '1.5rem',
-              fontWeight: '700',
-              color: 'white'
-            }}>
-              4
-            </div>
-            <h3 style={{ fontSize: '1.3rem', fontWeight: '600', marginBottom: '1rem', color: 'var(--spy-text)' }}>
-              🪙 Create Tokens
-            </h3>
-            <p style={{ color: 'var(--spy-text-secondary)', lineHeight: '1.6' }}>
-              Launch your own Stackk Koin (KSW) token with custom supply. Perfect for projects, communities, or experiments.
-            </p>
-          </div>
-        </div>
-
-        {/* Network Switching Guide */}
-        <div style={{
-          background: 'var(--spy-surface)',
-          padding: '2.5rem',
-          borderRadius: '12px',
-          border: '1px solid var(--spy-border)',
-          marginBottom: '2rem'
-        }}>
-          <h3 style={{ 
-            fontSize: '1.8rem', 
-            fontWeight: '600', 
-            textAlign: 'center', 
-            marginBottom: '2rem',
-            color: 'var(--spy-text)'
-          }}>
-            🌐 Network Switching Guide
-          </h3>
+        {/* Action Cards Grid */}
+        <div className="action-cards-grid">
           
-          <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', 
-            gap: '2rem' 
-          }}>
-            {/* Solana Networks */}
-            <div style={{
-              background: 'var(--spy-bg-secondary)',
-              padding: '1.5rem',
-              borderRadius: '8px',
-              border: '1px solid var(--spy-border)'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem' }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" style={{ marginRight: '0.5rem' }}>
-                  <defs>
-                    <linearGradient id="solanaGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#9945FF"/>
-                      <stop offset="100%" stopColor="#14F195"/>
-                    </linearGradient>
-                  </defs>
-                  <path fill="url(#solanaGradient)" d="M4.5 7.5L19.5 7.5C20.3284 7.5 21 8.17157 21 9C21 9.82843 20.3284 10.5 19.5 10.5L4.5 10.5C3.67157 10.5 3 9.82843 3 9C3 8.17157 3.67157 7.5 4.5 7.5Z"/>
-                  <path fill="url(#solanaGradient)" d="M4.5 13.5L19.5 13.5C20.3284 13.5 21 14.1716 21 15C21 15.8284 20.3284 16.5 19.5 16.5L4.5 16.5C3.67157 16.5 3 15.8284 3 15C3 14.1716 3.67157 13.5 4.5 13.5Z"/>
-                </svg>
-                <h4 style={{ fontSize: '1.2rem', fontWeight: '600', color: 'var(--spy-text)' }}>Solana Networks</h4>
+          {/* Transfer Card */}
+          <div className="modern-card action-card">
+            <div className="card-header-modern">
+              <div className="card-title-container">
+                <div className="card-icon">💸</div>
+                <h2 className="card-title-modern">Send Assets</h2>
               </div>
-              
-              <div style={{ marginBottom: '1rem' }}>
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  padding: '0.75rem', 
-                  background: 'var(--spy-surface)', 
-                  borderRadius: '6px', 
-                  marginBottom: '0.5rem' 
-                }}>
-                  <span style={{ 
-                    width: '8px', 
-                    height: '8px', 
-                    background: '#22c55e', 
-                    borderRadius: '50%', 
-                    marginRight: '0.75rem' 
-                  }}></span>
-                  <div>
-                    <strong style={{ color: 'var(--spy-text)' }}>Devnet</strong>
-                    <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--spy-text-secondary)' }}>
-                      Safe testing environment with free SOL
-                    </p>
-                  </div>
-                </div>
-                
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  padding: '0.75rem', 
-                  background: 'var(--spy-surface)', 
-                  borderRadius: '6px' 
-                }}>
-                  <span style={{ 
-                    width: '8px', 
-                    height: '8px', 
-                    background: '#ef4444', 
-                    borderRadius: '50%', 
-                    marginRight: '0.75rem' 
-                  }}></span>
-                  <div>
-                    <strong style={{ color: 'var(--spy-text)' }}>Mainnet</strong>
-                    <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--spy-text-secondary)' }}>
-                      Live network with real SOL (use with caution)
-                    </p>
-                  </div>
-                </div>
-              </div>
+              <div className="card-status-dot active"></div>
             </div>
+            
+            <div className="form-modern">
+              <div className="form-group-modern">
+                <label className="form-label-modern">Asset</label>
+                <select 
+                  value={selectedToken} 
+                  onChange={(e) => setSelectedToken(e.target.value)}
+                  className="form-select-modern"
+                >
+                  <option value="SOL">💎 SOL</option>
+                  {tokenBalances.map((token) => (
+                    <option key={token.mint} value={token.symbol}>
+                      🪙 {token.symbol} ({token.balance.toFixed(6)} available)
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            {/* Future Networks */}
-            <div style={{
-              background: 'var(--spy-bg-secondary)',
-              padding: '1.5rem',
-              borderRadius: '8px',
-              border: '1px solid var(--spy-border)',
-              opacity: '0.7'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem' }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" style={{ marginRight: '0.5rem' }}>
-                  <path fill="#627EEA" d="M12 0L5.5 12.25L12 16.5L18.5 12.25L12 0Z"/>
-                  <path fill="#627EEA" d="M12 24L5.5 13.75L12 9.5L18.5 13.75L12 24Z"/>
-                </svg>
-                <h4 style={{ fontSize: '1.2rem', fontWeight: '600', color: 'var(--spy-text)' }}>Ethereum (Coming Soon)</h4>
+              <div className="form-group-modern">
+                <label className="form-label-modern">Recipient Address</label>
+                <input
+                  type="text"
+                  value={recipientAddress}
+                  onChange={(e) => setRecipientAddress(e.target.value)}
+                  placeholder="Enter Solana address..."
+                  className="form-input-modern"
+                />
               </div>
+
+              <div className="form-group-modern">
+                <label className="form-label-modern">Amount</label>
+                <input
+                  type="number"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="0.00"
+                  step="0.000001"
+                  className="form-input-modern"
+                />
+              </div>
+
+              <button
+                onClick={transferAsset}
+                disabled={isTransferring || !recipientAddress || !amount}
+                className="btn-primary-modern"
+              >
+                <span className="btn-icon">🚀</span>
+                {isTransferring ? 'Sending...' : `Send ${selectedToken}`}
+              </button>
               
-              <div style={{ marginBottom: '1rem' }}>
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  padding: '0.75rem', 
-                  background: 'var(--spy-surface)', 
-                  borderRadius: '6px', 
-                  marginBottom: '0.5rem' 
-                }}>
-                  <span style={{ 
-                    width: '8px', 
-                    height: '8px', 
-                    background: '#94a3b8', 
-                    borderRadius: '50%', 
-                    marginRight: '0.75rem' 
-                  }}></span>
-                  <div>
-                    <strong style={{ color: 'var(--spy-text)' }}>Sepolia Testnet</strong>
-                    <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--spy-text-secondary)' }}>
-                      Ethereum testing environment
-                    </p>
+              {transferStatus === 'success' && (
+                <div className="success-message">
+                  <div className="success-icon">🎉</div>
+                  <div className="success-content">
+                    <h4>Transfer Successful!</h4>
+                    <p>Your {selectedToken} has been sent successfully</p>
                   </div>
                 </div>
-                
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  padding: '0.75rem', 
-                  background: 'var(--spy-surface)', 
-                  borderRadius: '6px' 
-                }}>
-                  <span style={{ 
-                    width: '8px', 
-                    height: '8px', 
-                    background: '#94a3b8', 
-                    borderRadius: '50%', 
-                    marginRight: '0.75rem' 
-                  }}></span>
-                  <div>
-                    <strong style={{ color: 'var(--spy-text)' }}>Ethereum Mainnet</strong>
-                    <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--spy-text-secondary)' }}>
-                      Live Ethereum network with real ETH
-                    </p>
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
           </div>
 
-          {/* Safety Tips */}
-          <div style={{
-            background: 'linear-gradient(135deg, rgba(255, 107, 107, 0.1) 0%, rgba(255, 107, 107, 0.05) 100%)',
-            border: '1px solid rgba(255, 107, 107, 0.2)',
-            borderRadius: '8px',
-            padding: '1.5rem',
-            marginTop: '2rem'
-          }}>
-            <h4 style={{ 
-              fontSize: '1.1rem', 
-              fontWeight: '600', 
-              color: '#ff6b6b', 
-              marginBottom: '1rem',
-              display: 'flex',
-              alignItems: 'center'
-            }}>
-              ⚠️ Safety Guidelines
-            </h4>
-            <ul style={{ 
-              margin: 0, 
-              paddingLeft: '1.5rem', 
-              color: 'var(--spy-text-secondary)',
-              lineHeight: '1.6'
-            }}>
-              <li>Always start with Devnet for testing and learning</li>
-              <li>Double-check recipient addresses before sending</li>
-              <li>Keep your private keys and mnemonic phrase secure</li>
-              <li>Use small amounts when testing on Mainnet</li>
-              <li>Understand network fees before making transactions</li>
-            </ul>
+          {/* Create Token Card */}
+          <div className="modern-card action-card">
+            <div className="card-header-modern">
+              <div className="card-title-container">
+                <div className="card-icon">🪙</div>
+                <h2 className="card-title-modern">Create Token</h2>
+              </div>
+              <div className="card-status-dot active"></div>
+            </div>
+            
+            <div className="form-modern">
+              <div className="form-group-modern">
+                <label className="form-label-modern">Initial Supply</label>
+                <input
+                  type="number"
+                  value={initialSupply}
+                  onChange={(e) => setInitialSupply(e.target.value)}
+                  placeholder="1000000"
+                  className="form-input-modern"
+                />
+              </div>
+
+              <div className="form-group-modern">
+                <label className="form-label-modern">Decimals</label>
+                <input
+                  type="number"
+                  value={decimals}
+                  onChange={(e) => setDecimals(e.target.value)}
+                  placeholder="9"
+                  min="0"
+                  max="9"
+                  className="form-input-modern"
+                />
+              </div>
+
+              <button
+                onClick={createToken}
+                disabled={isCreatingToken || !initialSupply || !decimals}
+                className="btn-primary-modern create-token"
+              >
+                <span className="btn-icon">✨</span>
+                {isCreatingToken ? 'Creating...' : 'Create Token'}
+              </button>
+
+              {createdTokenMint && (
+                <div className="success-message">
+                  <div className="success-icon">🎉</div>
+                  <div className="success-content">
+                    <h4>Token Created Successfully!</h4>
+                    <p className="token-mint">Mint: {createdTokenMint}</p>
+                  </div>
+                </div>
+              )}
+              
+              {createTokenStatus === 'success' && (
+                <div className="success-message">
+                  <div className="success-icon">🏭</div>
+                  <div className="success-content">
+                    <h4>Achievement Unlocked!</h4>
+                    <p>You're now a Token Creator! 🎉</p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Quick Actions */}
-        <div style={{ textAlign: 'center' }}>
-          <h3 style={{ 
-            fontSize: '1.5rem', 
-            fontWeight: '600', 
-            marginBottom: '1.5rem',
-            color: 'var(--spy-text)'
-          }}>
-            Ready to Get Started?
-          </h3>
-          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-              style={{
-                padding: '0.75rem 1.5rem',
-                background: 'linear-gradient(135deg, var(--spy-accent) 0%, #9333ea 100%)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                fontSize: '1rem',
-                fontWeight: '600',
-                cursor: 'pointer',
-                transition: 'transform 0.2s ease, box-shadow 0.2s ease'
-              }}
-              onMouseOver={(e) => {
-                const target = e.target as HTMLElement;
-                target.style.transform = 'translateY(-2px)';
-                target.style.boxShadow = '0 8px 25px rgba(147, 51, 234, 0.3)';
-              }}
-              onMouseOut={(e) => {
-                const target = e.target as HTMLElement;
-                target.style.transform = 'translateY(0)';
-                target.style.boxShadow = 'none';
-              }}
+        {/* Quick Actions Section */}
+        <div className="quick-actions-section">
+          <h2 className="section-title">⚡ Quick Actions</h2>
+          <div className="quick-actions-grid">
+            <button 
+              onClick={generateWallet}
+              className="quick-action-btn"
             >
-              🚀 Start Using Wallet
+              <span className="action-icon">🔄</span>
+              <div className="action-content">
+                <div className="action-title">New Wallet</div>
+                <div className="action-subtitle">Generate fresh wallet</div>
+              </div>
             </button>
-            <button
-              onClick={() => {
-                const tokenSection = document.querySelector('.token-creation-section');
-                if (tokenSection) {
-                  tokenSection.scrollIntoView({ behavior: 'smooth' });
-                }
-              }}
-              style={{
-                padding: '0.75rem 1.5rem',
-                background: 'transparent',
-                color: 'var(--spy-accent)',
-                border: '2px solid var(--spy-accent)',
-                borderRadius: '8px',
-                fontSize: '1rem',
-                fontWeight: '600',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease'
-              }}
-              onMouseOver={(e) => {
-                const target = e.target as HTMLElement;
-                target.style.background = 'var(--spy-accent)';
-                target.style.color = 'white';
-                target.style.transform = 'translateY(-2px)';
-              }}
-              onMouseOut={(e) => {
-                const target = e.target as HTMLElement;
-                target.style.background = 'transparent';
-                target.style.color = 'var(--spy-accent)';
-                target.style.transform = 'translateY(0)';
-              }}
+            
+            <button 
+              onClick={() => window.open('https://faucet.solana.com', '_blank')}
+              className={`quick-action-btn ${network === 'mainnet-beta' ? 'disabled' : ''}`}
+              disabled={network === 'mainnet-beta'}
             >
-              🪙 Create Token
+              <span className="action-icon">🚰</span>
+              <div className="action-content">
+                <div className="action-title">Get Devnet SOL</div>
+                <div className="action-subtitle">Free test tokens</div>
+              </div>
             </button>
+            
+            <button 
+              onClick={fetchBalance}
+              disabled={!address}
+              className="quick-action-btn"
+            >
+              <span className="action-icon">🔄</span>
+              <div className="action-content">
+                <div className="action-title">Refresh Balance</div>
+                <div className="action-subtitle">Update wallet data</div>
+              </div>
+            </button>
+            
+            <button 
+              onClick={() => setShowMnemonic(!showMnemonic)}
+              disabled={!address}
+              className="quick-action-btn"
+            >
+              <span className="action-icon">🔐</span>
+              <div className="action-content">
+                <div className="action-title">View Seed Phrase</div>
+                <div className="action-subtitle">Backup your wallet</div>
+              </div>
+            </button>
+            
+            <button 
+              onClick={() => window.open('https://explorer.solana.com', '_blank')}
+              className="quick-action-btn"
+            >
+              <span className="action-icon">🔍</span>
+              <div className="action-content">
+                <div className="action-title">Explorer</div>
+                <div className="action-subtitle">View transactions</div>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        {/* Safety Tips */}
+        <div className="modern-card safety-tips">
+          <div className="card-header-modern">
+            <div className="card-title-container">
+              <span className="card-icon">🛡️</span>
+              <h2 className="card-title-modern">Safety Guidelines</h2>
+            </div>
+          </div>
+          
+          <div className="tips-grid">
+            <div className="tip-item">
+              <span className="tip-icon">🔒</span>
+              <span className="tip-text">Never share your seed phrase with anyone</span>
+            </div>
+            <div className="tip-item">
+              <span className="tip-icon">💾</span>
+              <span className="tip-text">Always backup your wallet securely</span>
+            </div>
+            <div className="tip-item">
+              <span className="tip-icon">🔍</span>
+              <span className="tip-text">Double-check addresses before sending</span>
+            </div>
+            <div className="tip-item">
+              <span className="tip-icon">🌐</span>
+              <span className="tip-text">Only use trusted networks and websites</span>
+            </div>
+            <div className="tip-item">
+              <span className="tip-icon">⚡</span>
+              <span className="tip-text">Start with small amounts when testing</span>
+            </div>
+            <div className="tip-item">
+              <span className="tip-icon">🎯</span>
+              <span className="tip-text">Keep your browser and extensions updated</span>
+            </div>
           </div>
         </div>
       </div>
-
-      <p className="footer-text">
-        Classified Asset Management System - Stackk Wallet v3.0
-      </p>
     </div>
   )
 }

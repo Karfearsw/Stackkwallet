@@ -12,14 +12,21 @@ export default defineConfig({
   ],
   define: {
     global: 'globalThis',
+    'process.env': {},
+    'globalThis.Buffer': 'Buffer',
   },
   resolve: {
     alias: {
       buffer: 'buffer',
+      process: 'process/browser',
+      util: 'util',
     },
   },
   optimizeDeps: {
-    include: ['buffer'],
+    include: ['buffer', 'process', 'util'],
+  },
+  server: {
+    port: 5173,
   },
   build: {
     outDir: 'dist',

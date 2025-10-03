@@ -7,6 +7,7 @@ export default defineConfig({
   define: {
     global: 'globalThis',
     'process.env': {},
+    'globalThis.Buffer': 'Buffer',
   },
   resolve: {
     alias: {
@@ -16,6 +17,9 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    include: ['buffer', 'process'],
+    include: ['buffer', 'process', 'util'],
+  },
+  server: {
+    port: 5174,
   },
 })
