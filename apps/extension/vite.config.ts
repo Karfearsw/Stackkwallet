@@ -10,4 +10,30 @@ export default defineConfig({
       },
     }),
   ],
+  define: {
+    global: 'globalThis',
+  },
+  resolve: {
+    alias: {
+      buffer: 'buffer',
+    },
+  },
+  optimizeDeps: {
+    include: ['buffer'],
+  },
+  build: {
+    outDir: 'dist',
+    rollupOptions: {
+      input: {
+        popup: 'index.html',
+        background: 'public/background.js'
+      },
+      output: {
+        entryFileNames: (chunkInfo) => {
+          return chunkInfo.name === 'background' ? 'background.js' : '[name].[hash].js'
+        }
+      }
+    }
+  },
+  publicDir: 'public'
 })

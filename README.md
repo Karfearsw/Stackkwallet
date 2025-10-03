@@ -1,236 +1,223 @@
-# 🪙 Stackk Koin - Advanced Solana Wallet & Token Creator
+# 🚀 Stackk Wallet
 
-![Stackk Koin Banner](https://img.shields.io/badge/Stackk%20Koin-Solana%20Wallet-9945FF?style=for-the-badge&logo=solana)
-
-A powerful, modern web-based Solana wallet with custom SPL token creation capabilities. Built with React, TypeScript, and the latest Solana Web3.js libraries.
+A modern, secure, and user-friendly Solana wallet built with React, TypeScript, and Vite. Available as both a web application and browser extension.
 
 ## ✨ Features
 
-### 🔐 **Secure Wallet Management**
-- **Automatic Wallet Generation**: Secure mnemonic-based wallet creation
-- **Private Key Security**: Client-side key management with no server storage
-- **Multi-Network Support**: Seamless switching between Devnet and Mainnet
-- **Real-time Balance Updates**: Live SOL and SPL token balance tracking
+### 🔐 Security First
+- **Hardware Wallet Support**: Full Ledger Live integration for maximum security
+- **Mnemonic Backup**: Secure seed phrase generation with backup functionality
+- **Client-Side Security**: Private keys never leave your device
+- **Network Safety**: Built-in protection against malicious networks
 
-### 💰 **Native Solana Support**
-- **SOL Transfers**: Send and receive native Solana tokens
-- **SPL Token Support**: Full compatibility with all SPL tokens
-- **Popular Token Integration**: Pre-configured support for major Solana tokens
-- **Network Fee Management**: Transparent transaction fee handling
+### 💰 Wallet Management
+- **Multi-Network Support**: Solana Mainnet and Devnet
+- **SOL & SPL Tokens**: Full support for native SOL and custom SPL tokens
+- **Token Creation**: Create your own SPL tokens with custom metadata
+- **Balance Tracking**: Real-time balance updates and transaction history
+- **Token Transfers**: Send SOL and SPL tokens with ease
 
-### 🪙 **Custom Token Creation (Stackk Koin)**
-- **One-Click Token Creation**: Launch your own SPL token instantly
-- **Stackk Koin (KSW)**: Create custom tokens with personalized supply
-- **Minting Capabilities**: Add additional tokens to existing supplies
-- **Automatic Integration**: Created tokens appear instantly in your wallet
-- **Custom Branding**: Tokens include custom logos and metadata
+### 🔗 External Integrations
+- **Thirdweb Integration**: Connect to external wallets and dApps
+- **Ledger Live**: Hardware wallet support for enhanced security
+- **Web3 Compatible**: Standard Solana wallet adapter integration
 
-### 🌐 **Network Management**
-- **Devnet Testing**: Safe environment with free SOL for development
-- **Mainnet Production**: Live network support for real transactions
-- **Network Warnings**: Safety prompts when switching to Mainnet
-- **Future Ethereum Support**: Planned multi-chain expansion
+### 🎨 User Experience
+- **Modern UI**: Clean, responsive design with Tailwind CSS
+- **Cross-Platform**: Available as web app and browser extension
+- **Network Switching**: Easy switching between Mainnet and Devnet
+- **Copy to Clipboard**: Quick copying of addresses and transaction IDs
+- **Error Handling**: Comprehensive error messages and user guidance
 
-### 🎨 **Modern User Interface**
-- **Professional Design**: Clean, intuitive interface with gradient themes
-- **Responsive Layout**: Optimized for desktop and mobile devices
-- **Interactive Elements**: Smooth animations and hover effects
-- **Dark Theme**: Eye-friendly design with modern aesthetics
-- **Comprehensive Guide**: Built-in tutorial and safety guidelines
+## 🏗️ Project Structure
+
+```
+Stackk_Wallet/
+├── apps/
+│   ├── web/                 # Web application
+│   │   ├── src/
+│   │   │   ├── App.tsx      # Main application component
+│   │   │   ├── App.css      # Styling
+│   │   │   └── main.tsx     # Entry point
+│   │   ├── public/          # Static assets
+│   │   └── package.json     # Web app dependencies
+│   └── extension/           # Browser extension
+│       ├── src/
+│       │   ├── App.tsx      # Extension main component
+│       │   └── main.tsx     # Extension entry point
+│       ├── background.js    # Service worker
+│       ├── manifest.json    # Extension manifest
+│       └── package.json     # Extension dependencies
+├── packages/
+│   └── core/               # Shared utilities
+│       ├── src/
+│       │   ├── crypto.ts   # Cryptographic functions
+│       │   └── keys.ts     # Key management
+│       └── package.json    # Core package dependencies
+├── .trae/
+│   └── documents/          # Technical documentation
+└── README.md              # This file
+```
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 - Node.js 18+ 
-- npm or yarn
-- Modern web browser with JavaScript enabled
+- npm or pnpm
+- Modern web browser with WebUSB support (for Ledger)
 
-### Installation
+### Web Application
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/stackk-koin.git
-   cd stackk-koin
+   git clone https://github.com/Karfearsw/Stackkwallet.git
+   cd Stackkwallet
    ```
 
 2. **Install dependencies**
    ```bash
+   # Using npm
    npm install
+   
+   # Using pnpm (recommended)
+   pnpm install
    ```
 
-3. **Start development server**
+3. **Start the web application**
    ```bash
-   npm run dev -w apps/web
+   cd apps/web
+   npm run dev
    ```
 
 4. **Open your browser**
    Navigate to `http://localhost:5173`
 
-### Production Build
+### Browser Extension
+
+1. **Build the extension**
+   ```bash
+   cd apps/extension
+   npm run build
+   ```
+
+2. **Load in browser**
+   - **Chrome/Edge**: Go to `chrome://extensions/`, enable Developer mode, click "Load unpacked", select `apps/extension/dist`
+   - **Firefox**: Go to `about:debugging`, click "This Firefox", click "Load Temporary Add-on", select `apps/extension/dist/manifest.json`
+
+## 🔧 Development
+
+### Environment Setup
+
+1. **Install dependencies**
+   ```bash
+   pnpm install
+   ```
+
+2. **Set up environment variables**
+   Create `.env` files in both `apps/web/` and `apps/extension/`:
+   ```env
+   VITE_THIRDWEB_CLIENT_ID=your_thirdweb_client_id
+   ```
+
+3. **Start development servers**
+   ```bash
+   # Web app
+   cd apps/web && npm run dev
+   
+   # Extension
+   cd apps/extension && npm run dev
+   ```
+
+### Building for Production
 
 ```bash
-# Build for production
-npm run build -w apps/web
+# Build web app
+cd apps/web && npm run build
 
-# Preview production build
-npm run preview -w apps/web
+# Build extension
+cd apps/extension && npm run build
 ```
 
-## 📖 How to Use
+## 🔐 Security Features
 
-### 1. 🔐 **Wallet Setup**
-- Your wallet is automatically generated when you first visit
-- **Important**: Save your mnemonic phrase securely
-- Copy your wallet address to receive funds
+### Hardware Wallet Integration
+- **Ledger Support**: Full integration with Ledger hardware wallets
+- **Secure Signing**: All transactions signed on the hardware device
+- **Device Detection**: Automatic detection of connected Ledger devices
+- **Multi-Model Support**: Compatible with all Ledger models
 
-### 2. 💰 **Adding Funds**
-- **Devnet**: Use Solana faucets for free test SOL
-- **Mainnet**: Send SOL from exchanges or other wallets
-- Switch networks using the network selector
+### Mnemonic Security
+- **BIP39 Standard**: Industry-standard mnemonic generation
+- **Secure Display**: Protected mnemonic viewing with warnings
+- **Backup Verification**: Confirmation required before proceeding
+- **No Storage**: Mnemonics are never stored permanently
 
-### 3. 🚀 **Sending Tokens**
-- Select token type (SOL or SPL tokens)
-- Enter recipient address
-- Specify amount and confirm transaction
+### Network Security
+- **RPC Validation**: Verified Solana RPC endpoints
+- **Network Warnings**: Clear indicators for testnet vs mainnet
+- **Transaction Confirmation**: Multiple confirmation steps for transfers
 
-### 4. 🪙 **Creating Stackk Koin**
-- Navigate to the "Create Stackk Koin" section
-- Set your desired token supply
-- Click "Create Stackk Koin (KSW)"
-- Mint additional tokens as needed
+## 🌐 Supported Networks
 
-## 🛡️ Security Features
+- **Solana Mainnet**: Production network for real transactions
+- **Solana Devnet**: Development network for testing
+- **Ethereum** (Coming Soon): Ethereum mainnet and testnets
 
-- **Client-Side Key Management**: Private keys never leave your browser
-- **Secure Mnemonic Generation**: Industry-standard BIP39 implementation
-- **Network Warnings**: Safety prompts for Mainnet operations
-- **Transaction Confirmation**: Clear confirmation dialogs for all operations
-- **No Server Storage**: Zero backend dependencies for wallet data
+## 📱 Browser Compatibility
 
-## 🔧 Technical Stack
+### Web Application
+- Chrome 90+
+- Firefox 88+
+- Safari 14+
+- Edge 90+
 
-### Frontend
-- **React 18**: Modern React with hooks and functional components
-- **TypeScript**: Full type safety and developer experience
-- **Vite**: Lightning-fast development and build tooling
-- **CSS Variables**: Dynamic theming and responsive design
-
-### Blockchain Integration
-- **@solana/web3.js**: Official Solana JavaScript SDK
-- **@solana/spl-token**: SPL token program integration
-- **Thirdweb**: Enhanced wallet connection capabilities
-- **Buffer Polyfill**: Browser compatibility for Node.js modules
-
-### Development Tools
-- **ESLint**: Code quality and consistency
-- **TypeScript**: Static type checking
-- **Vite**: Modern build tooling
-- **npm Workspaces**: Monorepo management
-
-## 🌐 Network Configuration
-
-### Devnet (Recommended for Testing)
-- **RPC Endpoint**: `https://api.devnet.solana.com`
-- **Features**: Free SOL, safe testing environment
-- **Use Case**: Development, learning, experimentation
-
-### Mainnet (Production)
-- **RPC Endpoint**: `https://api.mainnet-beta.solana.com`
-- **Features**: Real SOL, live transactions
-- **Use Case**: Production applications, real value transfers
-
-## 📁 Project Structure
-
-```
-stackk-koin/
-├── apps/
-│   └── web/                 # Main web application
-│       ├── src/
-│       │   ├── App.tsx      # Main application component
-│       │   ├── main.tsx     # Application entry point
-│       │   └── index.css    # Global styles
-│       ├── public/          # Static assets
-│       └── package.json     # Web app dependencies
-├── packages/
-│   └── core/               # Shared utilities (future use)
-├── package.json            # Root package configuration
-└── README.md              # This file
-```
-
-## 🔮 Roadmap
-
-### Phase 1 (Current)
-- ✅ Solana wallet functionality
-- ✅ SPL token support
-- ✅ Custom token creation (Stackk Koin)
-- ✅ Network switching
-- ✅ Comprehensive user guide
-
-### Phase 2 (Planned)
-- 🔄 Ethereum network integration
-- 🔄 Multi-chain token swaps
-- 🔄 NFT support and creation
-- 🔄 DeFi protocol integration
-- 🔄 Mobile app development
-
-### Phase 3 (Future)
-- 🔄 Hardware wallet support
-- 🔄 Advanced trading features
-- 🔄 Staking and yield farming
-- 🔄 Cross-chain bridges
-- 🔄 DAO governance tools
+### Browser Extension
+- Chrome/Chromium 88+
+- Firefox 88+
+- Edge 88+
 
 ## 🤝 Contributing
 
-We welcome contributions! Please follow these steps:
+We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
+
+### Development Workflow
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-### Development Guidelines
-- Follow TypeScript best practices
-- Maintain consistent code formatting
-- Add tests for new features
-- Update documentation as needed
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Make your changes
+4. Add tests if applicable
+5. Commit your changes: `git commit -m 'Add amazing feature'`
+6. Push to the branch: `git push origin feature/amazing-feature`
+7. Open a Pull Request
 
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## ⚠️ Disclaimer
+## 🔗 Links
 
-**Important Security Notice:**
-- This wallet is for educational and development purposes
-- Always test on Devnet before using Mainnet
-- Keep your private keys and mnemonic phrases secure
-- Never share your private keys with anyone
-- Use at your own risk - we are not responsible for lost funds
+- **Live Demo**: [https://stackk-wallet.vercel.app](https://stackk-wallet.vercel.app)
+- **GitHub**: [https://github.com/Karfearsw/Stackkwallet](https://github.com/Karfearsw/Stackkwallet)
+- **Documentation**: [Technical Docs](.trae/documents/)
 
 ## 🆘 Support
 
-### Getting Help
-- 📖 Check the built-in guide section in the app
-- 🐛 Report bugs via GitHub Issues
-- 💬 Join our community discussions
-- 📧 Contact support for urgent issues
+If you encounter any issues or have questions:
 
-### Common Issues
-- **Wallet not loading**: Clear browser cache and refresh
-- **Transaction failing**: Check network connection and SOL balance
-- **Token not appearing**: Verify token mint address and network
+1. Check the [Issues](https://github.com/Karfearsw/Stackkwallet/issues) page
+2. Create a new issue with detailed information
+3. Join our community discussions
 
-## 🏆 Acknowledgments
+## 🙏 Acknowledgments
 
-- **Solana Foundation** for the excellent blockchain infrastructure
+- **Solana Foundation** for the robust blockchain infrastructure
 - **Thirdweb** for wallet connection utilities
-- **React Team** for the amazing frontend framework
-- **Vite Team** for the lightning-fast build tools
+- **Ledger** for hardware wallet integration
+- **Vite** for the fast development experience
+- **React** and **TypeScript** for the solid foundation
 
 ---
 
-**Built with ❤️ by the Stackk Team**
+**⚠️ Security Notice**: This wallet handles cryptocurrency. Always verify transactions carefully and keep your seed phrase secure. Never share your private keys or seed phrase with anyone.
 
-*Empowering the next generation of decentralized finance*
+**🚧 Development Status**: This project is actively maintained and developed. Features may be added or modified based on user feedback and security requirements.

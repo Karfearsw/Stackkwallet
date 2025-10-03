@@ -101,12 +101,12 @@ function App() {
   const [selectedToken, setSelectedToken] = useState<string>('SOL')
   const [isTransferring, setIsTransferring] = useState<boolean>(false)
   const [network, setNetwork] = useState<SolanaNetwork>(() => {
-    const saved = localStorage.getItem('solana-network')
-    return (saved as SolanaNetwork) || 'devnet'
+    return (localStorage.getItem('solana-network') as SolanaNetwork) || 'devnet'
   })
   const [showNetworkWarning, setShowNetworkWarning] = useState<boolean>(false)
-  
-  // Token creation states
+  const [showMnemonic, setShowMnemonic] = useState<boolean>(false)
+  const [mnemonicBackedUp, setMnemonicBackedUp] = useState<boolean>(false)
+  const [mnemonicCopied, setMnemonicCopied] = useState<boolean>(false)
   const [isCreatingToken, setIsCreatingToken] = useState<boolean>(false)
   const [createdTokenMint, setCreatedTokenMint] = useState<string>('')
   const [tokenSupply, setTokenSupply] = useState<string>('1000000')
@@ -516,6 +516,172 @@ function App() {
             <div className="info-row">
               <span className="info-label">Status</span>
               <span className="info-value">Active</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Mnemonic Backup Section */}
+        <div className="asset-card">
+          <div className="card-header">
+            <h2 className="card-title">
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                🔐 Backup Mnemonic Phrase
+              </span>
+            </h2>
+            <div className="status-indicator"></div>
+          </div>
+          
+          <div className="asset-info">
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(255, 107, 107, 0.1) 0%, rgba(255, 107, 107, 0.05) 100%)',
+              border: '1px solid rgba(255, 107, 107, 0.2)',
+              borderRadius: '8px',
+              padding: '1rem',
+              marginBottom: '1rem'
+            }}>
+              <h4 style={{ 
+                fontSize: '1rem', 
+                fontWeight: '600', 
+                color: '#ff6b6b', 
+                marginBottom: '0.5rem',
+                display: 'flex',
+                alignItems: 'center'
+              }}>
+                ⚠️ Security Warning
+              </h4>
+              <p style={{ 
+                margin: 0, 
+                color: 'var(--spy-text-secondary)',
+                fontSize: '0.9rem',
+                lineHeight: '1.4'
+              }}>
+                Your mnemonic phrase is the master key to your wallet. Never share it with anyone and store it securely offline.
+              </p>
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <button
+                onClick={() => setShowMnemonic(!showMnemonic)}
+                style={{
+                  width: '100%',
+                  padding: '0.75rem 1rem',
+                  background: showMnemonic ? 'var(--spy-muted)' : 'var(--spy-accent)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '1rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.2s',
+                  marginBottom: '1rem'
+                }}
+              >
+                {showMnemonic ? '🙈 Hide Mnemonic' : '👁️ Show Mnemonic'}
+              </button>
+
+              {showMnemonic && (
+                <div style={{
+                  background: 'var(--spy-surface)',
+                  border: '2px solid var(--spy-border)',
+                  borderRadius: '8px',
+                  padding: '1rem',
+                  marginBottom: '1rem'
+                }}>
+                  <div style={{
+                    background: 'var(--spy-bg-secondary)',
+                    padding: '1rem',
+                    borderRadius: '6px',
+                    fontFamily: 'monospace',
+                    fontSize: '0.9rem',
+                    lineHeight: '1.6',
+                    color: 'var(--spy-text)',
+                    wordBreak: 'break-all',
+                    marginBottom: '1rem'
+                  }}>
+                    {mnemonic}
+                  </div>
+                  
+                  <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(mnemonic)
+                        setMnemonicCopied(true)
+                        setTimeout(() => setMnemonicCopied(false), 2000)
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: '0.5rem 1rem',
+                        background: mnemonicCopied ? '#22c55e' : 'var(--spy-accent)',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        fontSize: '0.9rem',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        transition: 'background-color 0.2s'
+                      }}
+                    >
+                      {mnemonicCopied ? '✅ Copied!' : '📋 Copy to Clipboard'}
+                    </button>
+                  </div>
+
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    padding: '0.75rem',
+                    background: 'var(--spy-bg-secondary)',
+                    borderRadius: '6px'
+                  }}>
+                    <input
+                      type="checkbox"
+                      id="backup-confirmation"
+                      checked={mnemonicBackedUp}
+                      onChange={(e) => setMnemonicBackedUp(e.target.checked)}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <label 
+                      htmlFor="backup-confirmation" 
+                      style={{ 
+                        fontSize: '0.9rem', 
+                        color: 'var(--spy-text)', 
+                        cursor: 'pointer',
+                        lineHeight: '1.4'
+                      }}
+                    >
+                      I have safely backed up my mnemonic phrase and understand that losing it means losing access to my wallet forever.
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(34, 197, 94, 0.05) 100%)',
+              border: '1px solid rgba(34, 197, 94, 0.2)',
+              borderRadius: '8px',
+              padding: '1rem'
+            }}>
+              <h4 style={{ 
+                fontSize: '0.9rem', 
+                fontWeight: '600', 
+                color: '#22c55e', 
+                marginBottom: '0.5rem'
+              }}>
+                💡 Backup Tips
+              </h4>
+              <ul style={{ 
+                margin: 0, 
+                paddingLeft: '1.2rem', 
+                color: 'var(--spy-text-secondary)',
+                fontSize: '0.85rem',
+                lineHeight: '1.4'
+              }}>
+                <li>Write it down on paper and store in a safe place</li>
+                <li>Consider using a hardware wallet for maximum security</li>
+                <li>Never store it digitally or take screenshots</li>
+                <li>Test your backup by restoring in a test environment</li>
+              </ul>
             </div>
           </div>
         </div>
@@ -1165,12 +1331,14 @@ function App() {
                 transition: 'transform 0.2s ease, box-shadow 0.2s ease'
               }}
               onMouseOver={(e) => {
-                e.target.style.transform = 'translateY(-2px)';
-                e.target.style.boxShadow = '0 8px 25px rgba(147, 51, 234, 0.3)';
+                const target = e.target as HTMLElement;
+                target.style.transform = 'translateY(-2px)';
+                target.style.boxShadow = '0 8px 25px rgba(147, 51, 234, 0.3)';
               }}
               onMouseOut={(e) => {
-                e.target.style.transform = 'translateY(0)';
-                e.target.style.boxShadow = 'none';
+                const target = e.target as HTMLElement;
+                target.style.transform = 'translateY(0)';
+                target.style.boxShadow = 'none';
               }}
             >
               🚀 Start Using Wallet
@@ -1194,14 +1362,16 @@ function App() {
                 transition: 'all 0.2s ease'
               }}
               onMouseOver={(e) => {
-                e.target.style.background = 'var(--spy-accent)';
-                e.target.style.color = 'white';
-                e.target.style.transform = 'translateY(-2px)';
+                const target = e.target as HTMLElement;
+                target.style.background = 'var(--spy-accent)';
+                target.style.color = 'white';
+                target.style.transform = 'translateY(-2px)';
               }}
               onMouseOut={(e) => {
-                e.target.style.background = 'transparent';
-                e.target.style.color = 'var(--spy-accent)';
-                e.target.style.transform = 'translateY(0)';
+                const target = e.target as HTMLElement;
+                target.style.background = 'transparent';
+                target.style.color = 'var(--spy-accent)';
+                target.style.transform = 'translateY(0)';
               }}
             >
               🪙 Create Token

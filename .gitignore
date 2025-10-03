@@ -9,8 +9,10 @@ lerna-debug.log*
 # Build outputs
 dist/
 build/
-.next/
 out/
+.next/
+.nuxt/
+.vuepress/dist/
 
 # Environment variables
 .env
@@ -18,8 +20,9 @@ out/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.*.local
 
-# IDE and editor files
+# IDE and Editor files
 .vscode/
 .idea/
 *.swp
@@ -36,11 +39,11 @@ ehthumbs.db
 Thumbs.db
 
 # Logs
-logs
+logs/
 *.log
 
 # Runtime data
-pids
+pids/
 *.pid
 *.seed
 *.pid.lock
@@ -50,7 +53,7 @@ coverage/
 *.lcov
 
 # nyc test coverage
-.nyc_output
+.nyc_output/
 
 # Dependency directories
 jspm_packages/
@@ -80,14 +83,37 @@ jspm_packages/
 .cache
 .parcel-cache
 
-# Stores VSCode versions used for testing VSCode extensions
-.vscode-test
+# Vite cache
+.vite/
+
+# Rollup cache
+.rollup.cache/
 
 # Temporary folders
 tmp/
 temp/
 
-# Solana/Web3 specific
-.anchor/
-target/
-test-ledger/
+# Browser extension builds
+*.zip
+*.crx
+*.xpi
+
+# Wallet sensitive data (if any)
+*.key
+*.pem
+wallet-data/
+private-keys/
+
+# Testing
+.jest/
+test-results/
+playwright-report/
+
+# Vercel
+.vercel
+
+# Turbo
+.turbo
+
+# Local development
+.local/
